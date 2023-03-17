@@ -1,4 +1,3 @@
-import numpy
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -8,10 +7,10 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif, SelectFromModel
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import train_test_split, KFold
+from sklearn.model_selection import train_test_split, KFold, LeaveOneOut, ShuffleSplit
+from sklearn.tree import DecisionTreeClassifier
 
 # Breast cancer dataset for classification
-
 
 # load dataset
 data = load_breast_cancer()
@@ -23,8 +22,7 @@ print()
 print("Original results:")
 print(Y)
 print()
-Y = numpy.int32(Y)
-
+Y = np.int32(Y)
 
 # preprocessing data
 print("1. Standard Scaler")
@@ -106,19 +104,23 @@ else:
 # division of data into training and test sets and classification
 print("1. 10-Fold Cross Validation + kNN Model")
 print("2. Single Random Division + kNN Model")
-print("3. kNN Model")
-print("4. kNN Model")
+print("3. Leave-One-Out Cross Validation + kNN Model")
+print("4. Bootstrap Cross Validation + kNN Model")
+print("5. 10-Fold Cross Validation + Decision Tree Model")
+print("6. Single Random Division + Decision Tree Model")
 data_classificator = int(input("Choose a data classificator: "))
 
 k = 10
 n = 5
 kNN_model = KNeighborsClassifier(n_neighbors=n)
+decision_tree_model = DecisionTreeClassifier(criterion="entropy")
+mean_accuracy = 0
 
 if data_classificator == 1:
-    mean_accuracy = 0
+    best_accuracy = 0
     k_fold = KFold(n_splits=k, random_state=None, shuffle=False)
-    for i, (train_indexes, test_indexes) in enumerate(k_fold.split(X_final)):
-        kNN_model.fit(X_final[train_indexes, :], Y[train_indexes])
+    for j, (train_indexes, test_indexes) in enumerate(k_fold.split(X_final)):
+        kNN_model.fit(X_final[train_indexes, :], np.ravel(Y[train_indexes]))
         Y_predicted = kNN_model.predict(X_final[test_indexes])
         print("kNN Model:")
         for i in range(len(Y_predicted)):
@@ -130,12 +132,15 @@ if data_classificator == 1:
         accuracy = float(sum((y_p == y) for y_p, y in zip(Y_predicted, Y[test_indexes])) / len(Y_predicted) * 100)
         mean_accuracy += accuracy
         print(f"Accuracy = {round(accuracy, 4)}%")
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+    print(f"Best Accuracy = {round(best_accuracy, 4)}%")
     mean_accuracy /= k
     print(f"Mean Accuracy = {round(mean_accuracy, 4)}%")
 
 elif data_classificator == 2:
     X_train, X_test, Y_train, Y_test = train_test_split(X_final, Y, test_size=0.1, random_state=None)
-    kNN_model.fit(X_train, Y_train)
+    kNN_model.fit(X_train, np.ravel(Y_train))
     Y_predicted = kNN_model.predict(X_test)
     print("kNN Model:")
     for i in range(len(Y_predicted)):
@@ -148,29 +153,75 @@ elif data_classificator == 2:
     print(f"Accuracy = {round(accuracy, 4)}%")
 
 elif data_classificator == 3:
-    kNN_model.fit(X_final, Y)
-    Y_predicted = kNN_model.predict(X_final)
-    print("kNN Model:")
-    for i in range(len(Y)):
-        if Y_predicted[i] == Y[i]:
-            print(f'{i}. predicted: {Y_predicted[i]} RESULT: PASSED')
+    leave_one_out = LeaveOneOut()
+    for i, (train_indexes, test_indexes) in enumerate(leave_one_out.split(X_final)):
+        kNN_model.fit(X_final[train_indexes, :], np.ravel(Y[train_indexes]))
+        Y_predicted = kNN_model.predict(X_final[test_indexes])
+        print("kNN Model:")
+        if Y_predicted == Y[test_indexes]:
+            print(f'{i}. predicted: {Y_predicted[0]} RESULT: PASSED')
         else:
-            print(f'{i}. predicted: {Y_predicted[i]} RESULT: FAILED')
+            print(f'{i}. predicted: {Y_predicted[0]} RESULT: FAILED')
 
-    accuracy = float(sum((y_p == y) for y_p, y in zip(Y_predicted, Y)) / len(Y) * 100)
-    print(f"Accuracy = {round(accuracy, 4)}%")
+        accuracy = float(sum((y_p == y) for y_p, y in zip(Y_predicted, Y[test_indexes])) / len(Y_predicted) * 100)
+        mean_accuracy += accuracy
+        print(f"Accuracy = {round(accuracy, 4)}%")
+    mean_accuracy /= leave_one_out.get_n_splits(X_final)
+    print(f"Mean Accuracy = {round(mean_accuracy, 4)}%")
 
 elif data_classificator == 4:
-    kNN_model.fit(X_final, Y)
-    Y_predicted = kNN_model.predict(X_final)
-    print("kNN Model:")
-    for i in range(len(Y)):
-        if Y_predicted[i] == Y[i]:
+    bootstrap_iterations = 100
+    bootstrap = ShuffleSplit(n_splits=bootstrap_iterations, random_state=None)
+    for j, (train_indexes, test_indexes) in enumerate(bootstrap.split(X_final)):
+        kNN_model.fit(X_final[train_indexes, :], np.ravel(Y[train_indexes]))
+        Y_predicted = kNN_model.predict(X_final[test_indexes])
+        print("kNN Model:")
+        for i in range(len(Y_predicted)):
+            if Y_predicted[i] == Y[test_indexes[i]]:
+                print(f'{i}. predicted: {Y_predicted[i]} RESULT: PASSED')
+            else:
+                print(f'{i}. predicted: {Y_predicted[i]} RESULT: FAILED')
+
+        accuracy = float(sum((y_p == y) for y_p, y in zip(Y_predicted, Y[test_indexes])) / len(Y_predicted) * 100)
+        mean_accuracy += accuracy
+        print(f"Accuracy = {round(accuracy, 4)}%")
+    mean_accuracy /= bootstrap_iterations
+    print(f"Mean Accuracy = {round(mean_accuracy, 4)}%")
+
+elif data_classificator == 5:
+    best_accuracy = 0
+    k_fold = KFold(n_splits=k, random_state=None, shuffle=False)
+    for j, (train_indexes, test_indexes) in enumerate(k_fold.split(X_final)):
+        decision_tree_model.fit(X_final[train_indexes, :], np.ravel(Y[train_indexes]))
+        Y_predicted = decision_tree_model.predict(X_final[test_indexes])
+        print("Decision Tree Model:")
+        for i in range(len(Y_predicted)):
+            if Y_predicted[i] == Y[test_indexes[i]]:
+                print(f'{i}. predicted: {Y_predicted[i]} RESULT: PASSED')
+            else:
+                print(f'{i}. predicted: {Y_predicted[i]} RESULT: FAILED')
+
+        accuracy = float(sum((y_p == y) for y_p, y in zip(Y_predicted, Y[test_indexes])) / len(Y_predicted) * 100)
+        mean_accuracy += accuracy
+        print(f"Accuracy = {round(accuracy, 4)}%")
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+    print(f"Best Accuracy = {round(best_accuracy, 4)}%")
+    mean_accuracy /= k
+    print(f"Mean Accuracy = {round(mean_accuracy, 4)}%")
+
+elif data_classificator == 6:
+    X_train, X_test, Y_train, Y_test = train_test_split(X_final, Y, test_size=0.1, random_state=None)
+    decision_tree_model.fit(X_train, np.ravel(Y_train))
+    Y_predicted = decision_tree_model.predict(X_test)
+    print("Decision Tree Model:")
+    for i in range(len(Y_predicted)):
+        if Y_predicted[i] == Y_test[i]:
             print(f'{i}. predicted: {Y_predicted[i]} RESULT: PASSED')
         else:
             print(f'{i}. predicted: {Y_predicted[i]} RESULT: FAILED')
 
-    accuracy = float(sum((y_p == y) for y_p, y in zip(Y_predicted, Y)) / len(Y) * 100)
+    accuracy = float(sum((y_p == y) for y_p, y in zip(Y_predicted, Y_test)) / len(Y_predicted) * 100)
     print(f"Accuracy = {round(accuracy, 4)}%")
 
 else:
